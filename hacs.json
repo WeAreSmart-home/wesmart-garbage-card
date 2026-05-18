@@ -1,0 +1,7 @@
+{
+  "name": "WeSmart Garbage Card",
+  "content_in_root": true,
+  "filename": "wesmart-infinite-garbage-lab-card.js",
+  "homeassistant": "2024.1.0",
+  "render_readme": true
+}
