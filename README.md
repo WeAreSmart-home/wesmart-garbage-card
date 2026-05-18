@@ -2,8 +2,8 @@
 
 Lovelace card for [WeSmart Garbage](https://github.com/WeAreSmart-home/wesmart-garbage). Shows today's and upcoming garbage collections, and includes a built-in schedule editor.
 
-![View mode](screenshot-view.png)
-![Edit mode](screenshot-edit.png)
+![View mode](https://raw.githubusercontent.com/WeAreSmart-home/wesmart-garbage-card/main/screenshot-view.png)
+![Edit mode](https://raw.githubusercontent.com/WeAreSmart-home/wesmart-garbage-card/main/screenshot-edit.png)
 
 ---
 
