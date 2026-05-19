@@ -1,13 +1,14 @@
 /**
  * WeSmart Infinite Garbage Card - Unified Lab Edition
- * Version: 1.2.1
- * Features: Optimistic UI, Theme Listener, Multi-Waste Support, Real Persistence, Optional Upcoming List.
+ * Version: 1.3.0
+ * Features: Optimistic UI, Theme Listener, Multi-Waste Support, Real Persistence, Optional Upcoming List,
+ *           Phase-aware hero (today+tomorrow side by side), grayout after remind_hour, phase labels in list.
  */
 
 (() => {
   'use strict';
 
-  const CARD_VERSION = '1.2.1';
+  const CARD_VERSION = '1.3.0';
 
   const styles = `
   :host {
@@ -57,7 +58,9 @@
     display: flex; flex-direction: column; align-items: center; text-align: center;
     min-height: 160px; justify-content: center;
   }
-  .hero-items { display: flex; gap: 24px; justify-content: center; flex-wrap: wrap; margin-bottom: 16px; }
+  .hero-items { display: flex; gap: 28px; justify-content: center; align-items: flex-start; flex-wrap: wrap; margin-bottom: 16px; width: 100%; }
+  .hero-group { display: flex; gap: 20px; align-items: flex-start; }
+  .hero-divider { width: 1px; min-height: 80px; align-self: center; background: var(--border); flex-shrink: 0; margin: 0 4px; }
   .hero-item { display: flex; flex-direction: column; align-items: center; gap: 10px; }
   .hero-icon-wrap {
     width: 68px; height: 60px; border-radius: 50%;
@@ -75,8 +78,27 @@
     100% { transform: scale(0.95); opacity: 0.1; }
   }
   .hero-label { font-size: 14px; font-weight: 700; color: var(--text); }
-  .hero-status { font-size: 20px; font-weight: 800; color: var(--text); margin-top: 10px; letter-spacing: -0.02em; }
+  .hero-status { font-size: 20px; font-weight: 800; color: var(--text); margin-top: 10px; letter-spacing: -0.02em; display: flex; align-items: center; gap: 7px; }
+  .hero-status.tonight { color: var(--text-muted); }
+  .hero-status.urgent  { color: #F59E0B; }
+  .hero-status.today   { color: #10B981; }
   .hero-empty { font-size: 14px; color: var(--text-dim); font-style: italic; }
+
+  .phase-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .phase-dot.urgent { background: #F59E0B; box-shadow: 0 0 0 3px rgba(245,158,11,0.3); animation: pulse-dot 2s infinite ease-in-out; }
+  .phase-dot.today  { background: #10B981; box-shadow: 0 0 0 3px rgba(16,185,129,0.3); }
+  @keyframes pulse-dot {
+    0%,100% { box-shadow: 0 0 0 3px rgba(245,158,11,0.3); }
+    50%     { box-shadow: 0 0 0 6px rgba(245,158,11,0.08); }
+  }
+  .hero-container.phase-urgent {
+    border-color: rgba(245,158,11,0.35);
+    box-shadow: inset 0 0 40px rgba(245,158,11,0.05), 0 0 0 1px rgba(245,158,11,0.12);
+  }
+  .hero-container.phase-today {
+    border-color: rgba(16,185,129,0.3);
+    box-shadow: inset 0 0 40px rgba(16,185,129,0.04);
+  }
 
   /* List Section */
   .list-title {
@@ -192,6 +214,7 @@
         color: '#D97757',
         theme: 'auto',
         show_weekly_schedule: true,
+        remind_hour: 18,
         ...config
       };
       this._applyPalette();
@@ -203,7 +226,12 @@
       if (!this._optimisticTimeout) {
         this._schedule = sensor ? sensor.attributes.schedule || {} : {};
       }
-      this._render();
+      const now = new Date();
+      const renderKey = `${sensor?.state || ''}|${now.toDateString()}-${now.getHours() >= this._config.remind_hour ? 1 : 0}`;
+      if (this._lastRenderKey !== renderKey) {
+        this._lastRenderKey = renderKey;
+        this._render();
+      }
     }
 
     _getNextCollection() {
@@ -221,6 +249,31 @@
         }
       }
       return null;
+    }
+
+    _getPhase(daysUntil) {
+      if (daysUntil === 0) return 'today';
+      if (daysUntil === 1) return new Date().getHours() >= this._config.remind_hour ? 'urgent' : 'tonight';
+      return 'soon';
+    }
+
+    _getTodayAndTomorrow() {
+      const now = new Date();
+      const todayNum = now.getDay() || 7;
+      let tomorrowNum = todayNum + 1;
+      if (tomorrowNum > 7) tomorrowNum = 1;
+      return {
+        todayItems:    this._schedule[todayNum.toString()]    || [],
+        tomorrowItems: this._schedule[tomorrowNum.toString()] || [],
+      };
+    }
+
+    _getRowTimeHtml(daysUntil) {
+      const phase = this._getPhase(daysUntil);
+      if (phase === 'today')   return `<div class="row-time" style="color:#10B981;font-weight:800;">Ritiro oggi</div>`;
+      if (phase === 'urgent')  return `<div class="row-time" style="color:#F59E0B;font-weight:800;">Esporre adesso</div>`;
+      if (phase === 'tonight') return `<div class="row-time" style="font-weight:700;">Esporre stasera</div>`;
+      return `<div class="row-time">${this._getDayLabelShort(daysUntil)}</div>`;
     }
 
     _getDayLabel(daysUntil) {
@@ -333,6 +386,19 @@
       const next = this._getNextCollection();
       const daysArr = ['L', 'M', 'M', 'G', 'V', 'S', 'D'];
 
+      const { todayItems, tomorrowItems } = this._getTodayAndTomorrow();
+      const hasToday    = todayItems.length > 0;
+      const hasTomorrow = tomorrowItems.length > 0;
+      const heroTimePhase = hasTomorrow ? this._getPhase(1) : (hasToday ? 'today' : 'soon');
+      const phaseDot = heroTimePhase === 'urgent' || heroTimePhase === 'today'
+        ? `<span class="phase-dot ${heroTimePhase}"></span>` : '';
+      const phaseLabel = {
+        today:   'Ritiro oggi',
+        tonight: 'Esporre stasera',
+        urgent:  'Esporre adesso',
+        soon:    next ? `Prossimo: ${this._getDayLabel(next.daysUntil)}` : '',
+      }[heroTimePhase];
+
       // Get all upcoming collections for the list
       const upcoming = [];
       const now = new Date();
@@ -382,32 +448,61 @@
             }).join('')}
           </div>
         ` : `
-          <div class="hero-container">
-            ${next ? `
+          <div class="hero-container phase-${heroTimePhase}">
+            ${hasToday || hasTomorrow ? `
+              <div class="hero-items">
+                ${hasToday ? `
+                  <div class="hero-group" style="${heroTimePhase === 'urgent' ? 'filter:grayscale(0.7);opacity:0.45;transition:all 0.4s ease;' : ''}">
+                    ${todayItems.map(item => {
+                      const color = this._wasteTypes.find(w => w.name === item.name)?.color || '#D97757';
+                      return `<div class="hero-item">
+                        <div class="hero-icon-wrap" style="background:${color}20;">
+                          <div class="hero-glow" style="background:${color};"></div>
+                          <ha-icon icon="${item.icon}" style="color:${color};"></ha-icon>
+                        </div>
+                        <div class="hero-label">${item.name}</div>
+                      </div>`;
+                    }).join('')}
+                  </div>
+                ` : ''}
+                ${hasToday && hasTomorrow ? '<div class="hero-divider"></div>' : ''}
+                ${hasTomorrow ? `
+                  <div class="hero-group">
+                    ${tomorrowItems.map(item => {
+                      const color = this._wasteTypes.find(w => w.name === item.name)?.color || '#D97757';
+                      return `<div class="hero-item">
+                        <div class="hero-icon-wrap" style="background:${color}20;">
+                          <div class="hero-glow" style="background:${color};"></div>
+                          <ha-icon icon="${item.icon}" style="color:${color};"></ha-icon>
+                        </div>
+                        <div class="hero-label">${item.name}</div>
+                      </div>`;
+                    }).join('')}
+                  </div>
+                ` : ''}
+              </div>
+              <div class="hero-status ${heroTimePhase}">${phaseDot}${phaseLabel}</div>
+            ` : next ? `
               <div class="hero-items">
                 ${next.items.map(item => {
                   const color = this._wasteTypes.find(w => w.name === item.name)?.color || '#D97757';
-                  return `
-                    <div class="hero-item">
-                      <div class="hero-icon-wrap" style="background: ${color}20;">
-                        <div class="hero-glow" style="background: ${color};"></div>
-                        <ha-icon icon="${item.icon}" style="color: ${color};"></ha-icon>
-                      </div>
-                      <div class="hero-label">${item.name}</div>
+                  return `<div class="hero-item">
+                    <div class="hero-icon-wrap" style="background:${color}20;">
+                      <div class="hero-glow" style="background:${color};"></div>
+                      <ha-icon icon="${item.icon}" style="color:${color};"></ha-icon>
                     </div>
-                  `;
+                    <div class="hero-label">${item.name}</div>
+                  </div>`;
                 }).join('')}
               </div>
-              <div class="hero-status">
-                ${next.daysUntil === 0 ? 'Esporre oggi' : next.daysUntil === 1 ? 'Esporre stasera' : `Prossimo: ${this._getDayLabel(next.daysUntil)}`}
-              </div>
+              <div class="hero-status">${phaseLabel}</div>
             ` : `<div class="hero-empty">Nessun ritiro programmato</div>`}
           </div>
 
-          ${this._config.show_weekly_schedule && upcoming.length > 0 ? `
-            <div class="list-title">Calendario Settimanale</div>
+          ${this._config.show_weekly_schedule && upcoming.filter(d => d.daysUntil > 1).length > 0 ? `
+            <div class="list-title">Prossimi Ritiri</div>
             <div class="waste-list">
-              ${upcoming.map(day => `
+              ${upcoming.filter(d => d.daysUntil > 1).map(day => `
                 ${day.items.map(item => {
                   const color = this._wasteTypes.find(w => w.name === item.name)?.color || '#D97757';
                   return `
@@ -419,7 +514,7 @@
                         <div class="row-name">${item.name}</div>
                         <div class="row-days">${this._getDayLabelShort(day.daysUntil)}</div>
                       </div>
-                      <div class="row-time">${day.daysUntil === 0 ? 'Oggi' : day.daysUntil === 1 ? 'Domani' : `Tra ${day.daysUntil} gg`}</div>
+                      ${this._getRowTimeHtml(day.daysUntil)}
                     </div>
                   `;
                 }).join('')}
