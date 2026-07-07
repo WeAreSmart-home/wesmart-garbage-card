@@ -1,6 +1,6 @@
 /**
  * WeSmart Infinite Garbage Card - Unified Lab Edition
- * Version: 1.3.0
+ * Version: 1.3.1
  * Features: Optimistic UI, Theme Listener, Multi-Waste Support, Real Persistence, Optional Upcoming List,
  *           Phase-aware hero (today+tomorrow side by side), grayout after remind_hour, phase labels in list.
  */
@@ -8,7 +8,7 @@
 (() => {
   'use strict';
 
-  const CARD_VERSION = '1.3.0';
+  const CARD_VERSION = '1.3.1';
 
   const styles = `
   :host {
